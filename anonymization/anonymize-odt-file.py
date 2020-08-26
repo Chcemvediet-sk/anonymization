@@ -10,17 +10,16 @@ import content_types
 import magic
 from lxml import etree
 import numpy as np
-
 from weighted_levenshtein import lev
 ANONYMIZATION_STRING = u"XXXXX"
 
 def us(text):
     if isinstance(text, str) or isinstance(text, bytes):
-	  return unicode(text,'utf-8')
+        return unicode(text,'utf-8')
     elif isinstance(text, unicode):
-      return text
+        return text
     else:
-      return unicode(str(text),'utf-8')
+        return unicode(str(text),'utf-8')
 
 def utfstrip(word):
     loword = us(word).lower()
@@ -28,30 +27,32 @@ def utfstrip(word):
            "o":u"óô","r":u"ř","s":u"š","t":u"ť",u"u":u"ú",u"y":u"ý",u"z":u"ž"}
     asciiset = u' !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
     loword = [i for i in loword]
-    result = []
     for i in range(len(loword)):
         for ii in key:
             if loword[i] in key[ii]:
                 loword[i] = ii
         if loword[i] not in asciiset:
-            loword[i] = '.'
+            loword[i] = u'.'
     return ''.join(loword)
 
-def WordRecognize(slovo1,slovo2,output="bool"):
-    """Cez levenshteinovu vzdialenost zistujeme pocet krokov od jednoho slova k druhemu,
-    prve slovo1 musi byt vzdy nas original udaj, slovo2 je vyraz s ktorym ho porovnavame
+def wordrecognize(word1,word2,output='bool',threshold=0.3):
+    """Using Levenshtein Distance divided by the length of a word we get the similarity of two words
+    word1 is the original word, word2 is the one compared to word1.
     """
-    slovo1, slovo2 = utfstrip(us(slovo1).lower()), utfstrip(us(slovo2).lower())
-    slovo2 = ''.join([slovo2[i] for i in range(len(slovo2)) if slovo2[i] not in [',','.','?','!']])
+    word1, word2 = utfstrip(us(word1).lower()), utfstrip(us(word2).lower())
+    word2 = ''.join([word2[i] for i in range(len(word2)) if word2[i] not in [',','.','?','!']])
+
     for end in ['eho','ho','emu','ej','ym','ou']:
-        if end in slovo2[-3:]:
-            slovo1 = slovo1[:-1]+"."
-            slovo2 = slovo2[:-(len(end))]+"."
+        if end in word2[-3:]:
+            word1 = word1[:-1]+"."
+            word2 = word2[:-(len(end))]+"."
             break
-    if len(slovo1) > len(slovo2):
-        s1, s2 = slovo2, slovo1
+
+    if len(word1) > len(word2):
+        s1, s2 = word2, word1
     else:
-        s2, s1 = slovo2, slovo1
+        s2, s1 = word2, word1
+
     insert_costs = np.ones(128, dtype=np.float64)
     delete_costs = np.ones(128, dtype=np.float64)
     substitute_costs = np.ones((128,128), dtype=np.float64)
@@ -62,117 +63,116 @@ def WordRecognize(slovo1,slovo2,output="bool"):
     insert_costs[ord(".")] = 0
     insert_costs[ord("-")] = 0
 
-    skupiny=[["i","j","l","!","1"],["s","f"],["h","b"],["e","c","o"]]
-    for skupina in skupiny:
-        for pismeno in skupina:
-            for compismeno in skupina:
-                substitute_costs[ord(pismeno),ord(compismeno)] = 0.5
+    similargroups = [["i","j","l","!","1"],["s","f"],["h","b"],["e","c","o"]]
+    for group in similargroups:
+        for character in group:
+            for comcharacter in group:
+                substitute_costs[ord(character),ord(comcharacter)] = 0.5
     distance = lev(s1, s2, substitute_costs=substitute_costs, delete_costs=delete_costs, insert_costs=insert_costs)
-
-    if output == "float":
-        return distance/len(slovo1)
-    if slovo1 in slovo2 and len(slovo1)>2:
+    if output == 'float':
+        return (distance/len(word1))
+    if word1 in word2 and len(word1)>2:
         return True
-    return True if (distance/len(slovo1)) <= 0.3 else False
+    return True if (distance/len(word1)) <= threshold else False
 
-def StreetSplitter(street):
-    street = street.split()
-    ulica = []
-    prilahle = []
-    cislodomu = ''
-    for slovo in street:
+def streetsplit(string):
+    string = string.split()
+    street = []
+    nearby = []
+    housenumber = ''
+    for curr_word in string:
         for number in range(10):
-            if us(number) in us(slovo):
-                cislodomu = slovo
-                street.remove(slovo)
+            if us(number) in us(curr_word):
+                housenumber = curr_word
+                string.remove(curr_word)
                 break
-        if cislodomu != '':
+        if housenumber != '':
             break
-        if len(slovo) > 3:
-            ulica.append(''.join([slovo[i] for i in range(len(slovo)) if slovo[i] != ',']))
+        if len(curr_word) > 3:
+            street.append(''.join([curr_word[i] for i in range(len(curr_word)) if curr_word[i] != ',']))
         else:
-            prilahle.append(slovo)
-    return [ulica,prilahle,cislodomu]
+            nearby.append(curr_word)
+    return [street,nearby,housenumber]
 
-def Substitute_Identity(content,meno,street,mesto,zipcode,anonymization_string=u"xxxxxxx"):
+def substitute_identity(content,name,street,city,zipcode,anonymization_string=u"xxxxxxx"):
     """Replace all instances of personal information in text.
     """
     content = us(content)
-    meno,street,mesto,zipcode = us(meno),us(street),us(mesto),us(zipcode)
+    name,street,city,zipcode = us(name),us(street),us(city),us(zipcode)
     text = content
     content = content.split()
-    Censoring = []
+    censoring = []
     
-    VelkoMesta = ['bratislava','kosice','presov','zilina','banska bystrica',
-                  'nitra','trnava','trencin','martin','poprad','prievidza',
-                  'zvolen','povazska bystrica','michalovce','nove zamky',
-                  'spisska nova ves','komarno',' humenne','levice','bardejov']
+    cities = ['bratislava','kosice','presov','zilina','banska bystrica',
+               'nitra','trnava','trencin','martin','poprad','prievidza',
+              'zvolen','povazska bystrica','michalovce','nove zamky',
+              'spisska nova ves','komarno',' humenne','levice','bardejov']
     
-    krstne = meno.split()[0]
-    priezvisko = meno.split()[1]
-    ulica = StreetSplitter(street)[0]
-    streetprivlastok = StreetSplitter(street)[1]
-    streetnumber = StreetSplitter(street)[2]
+    firstname = name.split()[0]
+    surname = name.split()[-1]
+    streetname = streetsplit(street)[0]
+    street_attribute = streetsplit(street)[1]
+    street_number = streetsplit(street)[2]
     for index in range(len(content)):
-        slovo = content[index]
+        curr_word = content[index]
         if index==0:
-            predword = ''
+            preword = ''
         else:
-            predword = content[index-1]
+            preword = content[index-1]
         if index==(len(content)-1):
-            poword = ''
+            afterword = ''
         else:
-            poword = content[index+1]
-        if WordRecognize(priezvisko,slovo):         
-            predslovo = WordRecognize(krstne,predword,'float')
-            poslovo = WordRecognize(krstne,poword,'float')
+            afterword = content[index+1]
+        if wordrecognize(surname,curr_word):         
+            preword_float = wordrecognize(firstname,preword,'float')
+            afterword_float = wordrecognize(firstname,afterword,'float')
             
-            if predslovo < poslovo and predslovo < 0.45:
-                Censoring.append(predword+" "+slovo)
-            elif poslovo < predslovo and poslovo < 0.45:
-                Censoring.append(slovo+" "+poword)
+            if preword_float < afterword_float and preword_float < 0.45:
+                censoring.append(preword+" "+curr_word)
+            elif afterword_float < preword_float and afterword_float < 0.45:
+                censoring.append(curr_word+" "+afterword)
             else:
-                Censoring.append(slovo)
-        for nazovulice in ulica:
-            if WordRecognize(nazovulice,slovo):
-                for privlastok in streetprivlastok:
-                    predslovo = WordRecognize(privlastok,predword,'float')
-                    poslovo = WordRecognize(privlastok,poword,'float')
-                    if predslovo < poslovo and predslovo < 0.35:
-                        Censoring.append(predword+" "+slovo)
-                        streetprivlastok.remove(privlastok)
-                    elif poslovo < predslovo and poslovo < 0.35:
-                        Censoring.append(slovo+" "+poword)
-                        streetprivlastok.remove(privlastok)
+                censoring.append(curr_word)
+        for street_iter in streetname:
+            if wordrecognize(street_iter,curr_word):
+                for attribute_iter in street_attribute:
+                    preword_float = wordrecognize(attribute_iter,preword,'float')
+                    afterword_float = wordrecognize(attribute_iter,afterword,'float')
+                    if preword_float < afterword_float and preword_float < 0.35:
+                        censoring.append(preword+" "+curr_word)
+                        street_attribute.remove(attribute_iter)
+                    elif afterword_float < preword_float and afterword_float < 0.35:
+                        censoring.append(curr_word+" "+afterword)
+                        street_attribute.remove(attribute_iter)
                     else:
-                        Censoring.append(slovo)
-                if len(streetprivlastok) < 1:
-                  Censoring.append(slovo)
-        if WordRecognize(streetnumber,slovo):
-            Censoring.append(slovo)
-        if len(mesto.split()) == 1:
-            mestoslovo = slovo
-        if len(mesto.split()) == 2:
-            mestoslovo = slovo + " " +poword
-        if len(mesto.split()) > 2:
-            mestoslovo = predword + ' ' + slovo + ' ' + poword
-            mesto = ' '.join(mesto.split()[:3])
-        if WordRecognize(mesto, mestoslovo):
-            ideme = True
-            for velkomesto in VelkoMesta:
-                if WordRecognize(mesto,velkomesto):
-                    ideme = False
-            if ideme:
-                Censoring.append(mestoslovo)
-        if WordRecognize(zipcode,slovo):
-            Censoring.append(slovo)
+                        censoring.append(curr_word)
+                if len(street_attribute) < 1:
+                  censoring.append(curr_word)
+        if wordrecognize(street_number,curr_word):
+            censoring.append(curr_word)
+        if len(city.split()) == 1:
+            cityword = curr_word
+        if len(city.split()) == 2:
+            cityword = curr_word + " " +afterword
+        if len(city.split()) > 2:
+            cityword = preword + ' ' + curr_word + ' ' + afterword
+            city = ' '.join(city.split()[:3])
+        if wordrecognize(city, cityword):
+            go_on = True
+            for city_iter in cities:
+                if wordrecognize(city,city_iter):
+                    go_on = False
+            if go_on:
+                censoring.append(cityword)
+        if wordrecognize(zipcode,curr_word):
+            censoring.append(curr_word)
         elif len(zipcode)==5:
             zipkod = [zipcode[:3],zipcode[3:]]
-            if WordRecognize(zipkod[0],slovo) and WordRecognize(zipkod[1],poword):
-                Censoring.append(slovo+' '+poword)
+            if wordrecognize(zipkod[0],curr_word) and wordrecognize(zipkod[1],afterword):
+                censoring.append(curr_word+' '+afterword)
     anonymized = text
-    for udaj in sorted(Censoring, key=len, reverse=True):
-        anonymized = anonymized.replace(udaj,us(anonymization_string))
+    for confidential in sorted(censoring, key=len, reverse=True):
+        anonymized = anonymized.replace(confidential,us(anonymization_string))
     return anonymized
 
 def anonymize_markup_new(content, parser, name, street, city, zipcode, xpath=u'.//', namespace=None):
@@ -184,10 +184,10 @@ def anonymize_markup_new(content, parser, name, street, city, zipcode, xpath=u'.
         for tt in list(t): 
             if tt.tail is None:
                 continue
-            tt.tail = Substitute_Identity(tt.tail,name,street,city,zipcode,ANONYMIZATION_STRING)
+            tt.tail = substitute_identity(tt.tail,name,street,city,zipcode,ANONYMIZATION_STRING)
         if t.text is None:
             continue
-        t.text = Substitute_Identity(t.text,name,street,city,zipcode,ANONYMIZATION_STRING)
+        t.text = substitute_identity(t.text,name,street,city,zipcode,ANONYMIZATION_STRING)
     return etree.tostring(root)
 
 def anonymize_odt(filename, filenameout, name, street, city, zipcode):
