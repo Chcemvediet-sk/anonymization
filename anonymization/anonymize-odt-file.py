@@ -98,10 +98,21 @@ def substitute_identity(content,name,street,city,zipcode,anonymization_string=u"
     """Replace all instances of personal information in text.
     """
     content = us(content)
+    anonymization_string = us(anonymization_string)
     name,street,city,zipcode = us(name),us(street),us(city),us(zipcode)
     text = content
     content = content.split()
-    censoring = []
+    lex_index= []
+    i = 0
+    secon_ind = 0
+    
+    while i < len(content):
+        first_ind = text[secon_ind:].index(content[i])+secon_ind
+        secon_ind = first_ind + len(content[i])
+        lex_index.append((first_ind,secon_ind))
+        i += 1
+        
+    censoring = set()
     
     cities = ['bratislava','kosice','presov','zilina','banska bystrica',
                'nitra','trnava','trencin','martin','poprad','prievidza',
@@ -115,47 +126,55 @@ def substitute_identity(content,name,street,city,zipcode,anonymization_string=u"
     street_number = streetsplit(street)[2]
     for index in range(len(content)):
         curr_word = content[index]
+        curr_index = lex_index[index]
         if index==0:
             preword = ''
+            prev_index = ()
         else:
             preword = content[index-1]
+            prev_index = lex_index[index-1]
         if index==(len(content)-1):
             afterword = ''
+            next_index = ()
         else:
             afterword = content[index+1]
+            next_index = lex_index[index+1]
         if wordrecognize(surname,curr_word):         
             preword_float = wordrecognize(firstname,preword,'float')
             afterword_float = wordrecognize(firstname,afterword,'float')
             
             if preword_float < afterword_float and preword_float < 0.45:
-                censoring.append(preword+" "+curr_word)
+                censoring.add(prev_index+curr_index)
             elif afterword_float < preword_float and afterword_float < 0.45:
-                censoring.append(curr_word+" "+afterword)
+                censoring.add(curr_index+next_index)
             else:
-                censoring.append(curr_word)
+                censoring.add(curr_index)
         for street_iter in streetname:
             if wordrecognize(street_iter,curr_word):
                 for attribute_iter in street_attribute:
                     preword_float = wordrecognize(attribute_iter,preword,'float')
                     afterword_float = wordrecognize(attribute_iter,afterword,'float')
                     if preword_float < afterword_float and preword_float < 0.35:
-                        censoring.append(preword+" "+curr_word)
+                        censoring.add(prev_index+curr_index)
                         street_attribute.remove(attribute_iter)
                     elif afterword_float < preword_float and afterword_float < 0.35:
-                        censoring.append(curr_word+" "+afterword)
+                        censoring.add(curr_index+next_index)
                         street_attribute.remove(attribute_iter)
                     else:
-                        censoring.append(curr_word)
+                        censoring.append(curr_index)
                 if len(street_attribute) < 1:
-                  censoring.append(curr_word)
+                    censoring.add(curr_index)
         if wordrecognize(street_number,curr_word):
-            censoring.append(curr_word)
+            censoring.add(curr_index)
         if len(city.split()) == 1:
             cityword = curr_word
+            cityword_index = curr_index
         if len(city.split()) == 2:
             cityword = curr_word + " " +afterword
+            cityword_index = curr_index+next_index
         if len(city.split()) > 2:
             cityword = preword + ' ' + curr_word + ' ' + afterword
+            cityword_index = prev_index+curr_index+next_index
             city = ' '.join(city.split()[:3])
         if wordrecognize(city, cityword):
             go_on = True
@@ -163,16 +182,24 @@ def substitute_identity(content,name,street,city,zipcode,anonymization_string=u"
                 if wordrecognize(city,city_iter):
                     go_on = False
             if go_on:
-                censoring.append(cityword)
+                censoring.add(cityword_index)
         if wordrecognize(zipcode,curr_word):
-            censoring.append(curr_word)
+            censoring.add(curr_index)
         elif len(zipcode)==5:
             zipkod = [zipcode[:3],zipcode[3:]]
             if wordrecognize(zipkod[0],curr_word) and wordrecognize(zipkod[1],afterword):
-                censoring.append(curr_word+' '+afterword)
+                censoring.add(curr_index+next_index)
     anonymized = text
-    for confidential in sorted(censoring, key=len, reverse=True):
-        anonymized = anonymized.replace(confidential,us(anonymization_string))
+    shift_by = 0
+    censoring = sorted(censoring, key=(lambda x:min(x)))
+    for conf_tuple in censoring:
+        if len(conf_tuple)==0:
+            continue
+        first_ind = min(conf_tuple)+shift_by
+        secondind = max(conf_tuple)+shift_by
+        conf_tuple = (first_ind,secondind)
+        anonymized = anonymized[:first_ind]+anonymization_string+anonymized[secondind:]
+        shift_by += len(anonymization_string)-(secondind-first_ind)
     return anonymized
 
 def anonymize_markup_new(content, parser, name, street, city, zipcode, xpath=u'.//', namespace=None):
