@@ -1,7 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 import sys
-from typing import List, Union, Tuple
 
 import zipfile
 import StringIO
@@ -15,7 +14,7 @@ from weighted_levenshtein import lev
 ANONYMIZATION_STRING = u"XXXXX"
 
 
-def us(text: Union[str, int, bytes]) -> str:
+def us(text):
     if isinstance(text, str) or isinstance(text, bytes):
         return unicode(text, 'utf-8')
 
@@ -25,7 +24,7 @@ def us(text: Union[str, int, bytes]) -> str:
     return unicode(str(text), 'utf-8')
 
 
-def utfstrip(word: str) -> str:
+def utfstrip(word):
     low_caps_word = us(word).lower()
     key = {"a": u"áä", "c": u"č", "d": u"ď", "e": u"éě", u"i": u"í", u"l": u"ľ", u"n": u"ň",
            "o": u"óô", "r": u"ř", "s": u"š", "t": u"ť", u"u": u"ú", u"y": u"ý", u"z": u"ž"}
@@ -40,7 +39,7 @@ def utfstrip(word: str) -> str:
     return ''.join(chars_in_word)
 
 
-def wordrecognize(word1: str, word2: str, output='bool', threshold=0.3) -> Union[bool, float]:
+def wordrecognize(word1, word2, output='bool', threshold=0.3):
     """Using Levenshtein Distance divided by the length of a word we get the
     similarity of two words word1 is the original word, word2 is the one
     compared to word1.
@@ -103,7 +102,7 @@ def wordrecognize(word1: str, word2: str, output='bool', threshold=0.3) -> Union
     return (distance/len(word1)) <= threshold
 
 
-def streetsplit(string: str) -> Tuple[List[str], List[str], str]:
+def streetsplit(string):
     string = string.split()
 
     street = []
@@ -132,12 +131,12 @@ def streetsplit(string: str) -> Tuple[List[str], List[str], str]:
     return (street, nearby, housenumber)
 
 
-def substitute_identity(content: str,
-                        name: str,
-                        street: str,
-                        city: str,
-                        zipcode: str,
-                        anonymization_string=u"xxxxxxx") -> str:
+def substitute_identity(content,
+                        name,
+                        street,
+                        city,
+                        zipcode,
+                        anonymization_string=u"xxxxxxx"):
     """Replace all instances of personal information in text.
     """
     content = us(content)
