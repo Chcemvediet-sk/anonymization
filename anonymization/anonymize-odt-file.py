@@ -40,7 +40,7 @@ def utfstrip(word: str) -> str:
     return ''.join(chars_in_word)
 
 
-def wordrecognize(word1: str, word2: str, output='bool', threshold=0.3):
+def wordrecognize(word1: str, word2: str, output='bool', threshold=0.3) -> Union[bool, float]:
     """Using Levenshtein Distance divided by the length of a word we get the
     similarity of two words word1 is the original word, word2 is the one
     compared to word1.
@@ -103,7 +103,7 @@ def wordrecognize(word1: str, word2: str, output='bool', threshold=0.3):
     return (distance/len(word1)) <= threshold
 
 
-def streetsplit(string) -> Tuple[List[str], List[str], str]:
+def streetsplit(string: str) -> Tuple[List[str], List[str], str]:
     string = string.split()
 
     street = []
